@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import PromiseBuilder from "./PromiseBuilder";
 import {
   ConfirmForeignCode,
+  CreatePassword,
   Signin,
   SolveAntiRobotChallenge,
 } from "@mingbye/deadbolt-react";
 import { CircularProgress, Typography } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import resolveSignin from "./resolveSignin";
+import resolveResult from "./resolveResult";
 
 const serverReach = `http://localhost/app/deadbolt`;
 
@@ -78,69 +79,6 @@ export default function SigninRoute() {
                   trimInput: item.data.trimInput,
                   usePassword: item.data.withPassword,
                   onSubmitId: async (id, password) => {
-                    ////////////
-                    async function result(serverResult) {
-                      if (serverResult.status == 200) {
-                        const obj = await serverResult.json();
-
-                        return new Signin.Success({
-                          user: obj.user,
-                          signin: obj.signin,
-                        });
-                      }
-
-                      if (serverResult.status == 428) {
-                        const text = await serverResult.text();
-
-                        if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
-                          const suffixedData = JSON.parse(
-                            text.substring(`CONFIRM-FOREIGN-CODE:`.length)
-                          );
-
-                          return new ConfirmForeignCode({
-                            codeWhere: suffixedData.codeWhere,
-                            codeWhereIdentifier:
-                              suffixedData.codeWhereIdentifier,
-                            trimInput: suffixedData.trimInput,
-                            onSubmit: async (code) => {
-                              const serverResult = await fetch(
-                                `${serverReach}/signin/${key}/withConfirmForeignCodeStep`, 
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    codeWhere: suffixedData.codeWhere,
-                                    codeWhereIdentifier:
-                                      suffixedData.codeWhereIdentifier,
-                                    code,
-                                    stepPassToken: suffixedData.stepPassToken,
-                                  }),
-                                }
-                              );
-
-                              return await result(serverResult);
-                            },
-                          });
-                        }
- 
-                        // if (text.startsWith(`SOLVE-ANTI-ROBOT-CHALLENGE:`)) {
-                        //   const suffixedData = JSON.parse(
-                        //     text.substring(`SOLVE-ANTI-ROBOT-CHALLENGE:`.length)
-                        //   );
-
-                        //   return new SolveAntiRobotChallenge({
-                        //     createChallenge: async () => {
-                        //       throw new Error();
-                        //     },
-                        //   });
-                        // }
-                      }
-
-                      throw await serverResult.text();
-                    }
-
                     const serverResult = await fetch(
                       `${serverReach}/signin/${key}`,
                       {
@@ -155,7 +93,71 @@ export default function SigninRoute() {
                       }
                     );
 
-                    return await result(serverResult);
+                    if (serverResult.status == 200) {
+                      const obj = await serverResult.json();
+
+                      return new Signin.Success({
+                        user: obj.user,
+                        signin: obj.signin,
+                      });
+                    }
+
+                    if (serverResult.status == 428) {
+                      const text = await serverResult.text();
+
+                      // if (text.startsWith(`SOLVE-ANTI-ROBOT-CHALLENGE:`)) {
+                      //   const suffixedData = JSON.parse(
+                      //     text.substring(`SOLVE-ANTI-ROBOT-CHALLENGE:`.length)
+                      //   );
+
+                      //   return createSolveAntiRobotChallenge(); ...
+
+                      // }
+
+                      if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
+                        const suffixedData = JSON.parse(
+                          text.substring(`CONFIRM-FOREIGN-CODE:`.length)
+                        );
+
+                        return createConfirmForeignCode(key, {
+                          codeWhere: suffixedData.codeWhere,
+                          codeWhereIdentifier: suffixedData.codeWhereIdentifier,
+                          trimInput: suffixedData.trimInput,
+                          stepPassToken: suffixedData.stepPassToken,
+                        });
+                      }
+
+                      if (text.startsWith(`CREATE-PASSWORD:`)) {
+                        const suffixedData = JSON.parse(
+                          text.substring(`CREATE-PASSWORD:`.length)
+                        );
+
+                        return createCreatePassword(key, {
+                          stepPassToken: suffixedData.stepPassToken,
+                        });
+                      }
+
+                      throw text;
+                    }
+
+                    if (serverResult.status == 400) {
+                      const text = await serverResult.text();
+
+                      if (text.startsWith(`REJECTED:`)) {
+                        const suffixedData = JSON.parse(
+                          text.substring(`REJECTED:`.length)
+                        );
+
+                        throw new Signin.Id.RejectedError({
+                          variant: suffixedData.variant,
+                          customMessage: suffixedData.customMessage,
+                        });
+                      }
+
+                      throw text;
+                    }
+
+                    throw await serverResult.text();
                   },
                 });
               }
@@ -175,12 +177,11 @@ export default function SigninRoute() {
                     ? async () => {
                         const _searchParams = new URLSearchParams();
 
-                        _searchParams.set("optSignin", "true");
                         _searchParams.set("signin", "true");
 
                         if (searchParams.has("resolve")) {
                           _searchParams.set(
-                            "signinResolve",
+                            "resolve",
                             searchParams.get("resolve")
                           );
                         }
@@ -190,9 +191,7 @@ export default function SigninRoute() {
                     : undefined
                 }
                 onResult={(result) => {
-                  const signinResolve = searchParams.get("resolve");
-
-                  resolveSignin(signinResolve, result);
+                  resolveResult(searchParams.get("resolve"), result);
                 }}
               />
             );
@@ -201,4 +200,162 @@ export default function SigninRoute() {
       ) : null}
     </div>
   );
+}
+
+function createConfirmForeignCode(
+  signinMethodKey,
+  { codeWhere, codeWhereIdentifier, trimInput, stepPassToken }
+) {
+  return new ConfirmForeignCode({
+    codeWhere: codeWhere,
+    codeWhereIdentifier: codeWhereIdentifier,
+    trimInput: trimInput,
+    onSubmit: async (code) => {
+      const serverResult = await fetch(
+        `${serverReach}/signin/${signinMethodKey}/withConfirmForeignCodeStep`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            codeWhere: codeWhere,
+            codeWhereIdentifier: codeWhereIdentifier,
+            code,
+            stepPassToken: stepPassToken,
+          }),
+        }
+      );
+
+      if (serverResult.status == 200) {
+        const obj = await serverResult.json();
+
+        return new Signin.Success({
+          user: obj.user,
+          autoSigninToken: obj.autoSigninToken,
+        });
+      }
+
+      if (serverResult.status == 428) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CONFIRM-FOREIGN-CODE:`.length)
+          );
+
+          return createConfirmForeignCode(signinMethodKey, {
+            codeWhere: suffixedData.codeWhere,
+            codeWhereIdentifier: suffixedData.codeWhereIdentifier,
+            trimInput: suffixedData.trimInput,
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        if (text.startsWith(`CREATE-PASSWORD:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CREATE-PASSWORD:`.length)
+          );
+
+          return createCreatePassword(signinMethodKey, {
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        throw text;
+      }
+
+      if (serverResult.status == 400) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`REJECTED:`)) {
+          const suffixedData = JSON.parse(text.substring(`REJECTED:`.length));
+
+          throw new ConfirmForeignCode.RejectedError({
+            variant: suffixedData.variant,
+            customMessage: suffixedData.customMessage,
+          });
+        }
+
+        throw text;
+      }
+
+      throw await serverResult.text();
+    },
+  });
+}
+
+function createCreatePassword(signinMethodKey, { stepPassToken }) {
+  return new CreatePassword({
+    onSubmit: async (password) => {
+      const serverResult = await fetch(
+        `${serverReach}/signin/${signinMethodKey}/withCreatePasswordStep`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            password: password,
+            stepPassToken: stepPassToken,
+          }),
+        }
+      );
+
+      if (serverResult.status == 200) {
+        const obj = await serverResult.json();
+
+        return new Signin.Success({
+          user: obj.user,
+          autoSigninToken: obj.autoSigninToken,
+        });
+      }
+
+      if (serverResult.status == 428) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CONFIRM-FOREIGN-CODE:`.length)
+          );
+
+          return createConfirmForeignCode(signinMethodKey, {
+            codeWhere: suffixedData.codeWhere,
+            codeWhereIdentifier: suffixedData.codeWhereIdentifier,
+            trimInput: suffixedData.trimInput,
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        if (text.startsWith(`CREATE-PASSWORD:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CREATE-PASSWORD:`.length)
+          );
+
+          return createCreatePassword(signinMethodKey, {
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        throw text;
+      }
+
+      if (serverResult.status == 400) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`REJECTED:`)) {
+          const suffixedData = JSON.parse(text.substring(`REJECTED:`.length));
+
+          throw new CreatePassword.RejectedError({
+            variant: suffixedData.variant,
+            customMessage: suffixedData.customMessage,
+          });
+        }
+
+        throw text;
+      }
+
+      throw await serverResult.text();
+    },
+  });
 }

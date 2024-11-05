@@ -11,8 +11,7 @@ import { CircularProgress, Typography } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DialogsProvider, useDialogs } from "@toolpad/core";
 import LoadingDialog from "./LoadingDialog";
-import resolveSignin from "./resolveSignin";
-import resolveSignup from "./resolveSignup";
+import resolveResult from "./resolveResult";
 
 const serverReach = `http://localhost/app/deadbolt`;
 
@@ -78,7 +77,7 @@ function $SignupRoute() {
             autoSigninToken,
           }),
         }),
-        { message: "Auto Signing-in"  }
+        { message: "Auto Signing-in" }
       );
     } catch (e) {
       return await doPromptRetryAndRetry();
@@ -146,83 +145,6 @@ function $SignupRoute() {
                   trimInput: item.data.trimInput,
                   usePassword: item.data.withPassword,
                   onSubmitId: async (id, password) => {
-                    ////////////
-                    async function result(serverResult) {
-                      if (serverResult.status == 200) {
-                        const obj = await serverResult.json();
-
-                        return new Signup.Success({
-                          user: obj.user,
-                          autoSigninToken: obj.autoSigninToken,
-                        });
-                      }
-
-                      if (serverResult.status == 428) {
-                        const text = await serverResult.text();
-
-                        if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
-                          const suffixedData = JSON.parse(
-                            text.substring(`CONFIRM-FOREIGN-CODE:`.length)
-                          );
-
-                          return new ConfirmForeignCode({
-                            codeWhere: suffixedData.codeWhere,
-                            codeWhereIdentifier:
-                              suffixedData.codeWhereIdentifier,
-                            trimInput: suffixedData.trimInput,
-                            onSubmit: async (code) => {
-                              const serverResult = await fetch(
-                                `${serverReach}/signup/${key}/withConfirmForeignCodeStep`,
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    codeWhere: suffixedData.codeWhere,
-                                    codeWhereIdentifier:
-                                      suffixedData.codeWhereIdentifier,
-                                    code,
-                                    stepPassToken: suffixedData.stepPassToken,
-                                  }),
-                                }
-                              );
-
-                              return await result(serverResult);
-                            },
-                          });
-                        }
-
-                        if (text.startsWith(`CREATE-PASSWORD:`)) {
-                          const suffixedData = JSON.parse(
-                            text.substring(`CREATE-PASSWORD:`.length)
-                          );
-
-                          return new CreatePassword({
-                            onSubmit: async (password) => {
-                              const serverResult = await fetch(
-                                `${serverReach}/signup/${key}/withCreatePasswordStep`,
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    password: password,
-                                    stepPassToken: suffixedData.stepPassToken,
-                                  }),
-                                }
-                              );
-
-                              return await result(serverResult);
-                            },
-                          });
-                        }
-                      }
-
-                      throw await serverResult.text();
-                    }
-
                     const serverResult = await fetch(
                       `${serverReach}/signup/${key}`,
                       {
@@ -237,7 +159,62 @@ function $SignupRoute() {
                       }
                     );
 
-                    return await result(serverResult);
+                    if (serverResult.status == 200) {
+                      const obj = await serverResult.json();
+
+                      return new Signup.Success({
+                        user: obj.user,
+                        autoSigninToken: obj.autoSigninToken,
+                      });
+                    }
+
+                    if (serverResult.status == 428) {
+                      const text = await serverResult.text();
+
+                      if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
+                        const suffixedData = JSON.parse(
+                          text.substring(`CONFIRM-FOREIGN-CODE:`.length)
+                        );
+
+                        return createConfirmForeignCode(key, {
+                          codeWhere: suffixedData.codeWhere,
+                          codeWhereIdentifier: suffixedData.codeWhereIdentifier,
+                          trimInput: suffixedData.trimInput,
+                          stepPassToken: suffixedData.stepPassToken,
+                        });
+                      }
+
+                      if (text.startsWith(`CREATE-PASSWORD:`)) {
+                        const suffixedData = JSON.parse(
+                          text.substring(`CREATE-PASSWORD:`.length)
+                        );
+
+                        return createCreatePassword(key, {
+                          stepPassToken: suffixedData.stepPassToken,
+                        });
+                      }
+
+                      throw text;
+                    }
+
+                    if (serverResult.status == 400) {
+                      const text = await serverResult.text();
+
+                      if (text.startsWith(`REJECTED:`)) {
+                        const suffixedData = JSON.parse(
+                          text.substring(`REJECTED:`.length)
+                        );
+
+                        throw new Signup.Id.RejectedError({
+                          variant: suffixedData.variant,
+                          customMessage: suffixedData.customMessage,
+                        });
+                      }
+
+                      throw text;
+                    }
+
+                    throw await serverResult.text();
                   },
                 });
               }
@@ -255,28 +232,37 @@ function $SignupRoute() {
                     : Object.values(signupMethods)
                 }
                 provideOptSignin={
-                  searchParams.get("optSignin") == "true"
+                  searchParams.get("signin") == "true"
                     ? async () => {
                         const _searchParams = new URLSearchParams();
-                        _searchParams.set("allowSignup", "true");
+                        _searchParams.set("optSignup", "true");
+
+                        if (searchParams.has("resolve")) {
+                          _searchParams.set(
+                            "resolve",
+                            searchParams.get("resolve")
+                          );
+                        }
 
                         navigate(`/signin?${_searchParams.toString()}`);
                       }
                     : undefined
                 }
                 onResult={async (result, signupMethod) => {
+                  const { user, autoSigninToken } = result;
+
                   const signin = searchParams.get("signin");
 
                   if (signin == "true") {
-                    const signinResolve = searchParams.get("signinResolve");
-
-                    const { user, autoSigninToken } = result;
-
                     if (autoSigninToken == undefined) {
-                      resolveSignin(signinResolve, {
+                      resolveResult(searchParams.get("resolve"), {
                         user,
                         signin: null,
                       });
+
+                      // await dialogs.alert(
+                      //   "Account created. Sign-in to continue"
+                      // );
 
                       return;
                     }
@@ -286,7 +272,7 @@ function $SignupRoute() {
                     );
 
                     if (!confirmDoAutoSignin) {
-                      resolveSignin(signinResolve, {
+                      resolveResult(searchParams.get("resolve"), {
                         user,
                         signin: null,
                       });
@@ -308,7 +294,7 @@ function $SignupRoute() {
                       autoSigninToken
                     );
 
-                    resolveSignin(signinResolve, {
+                    resolveResult(searchParams.get("resolve"), {
                       user: doAutoSigninResult.user,
                       signin: doAutoSigninResult.signin,
                     });
@@ -316,9 +302,10 @@ function $SignupRoute() {
                     return;
                   }
 
-                  const resolve = searchParams.get("resolve");
-
-                  resolveSignup(resolve, result);
+                  resolveResult(searchParams.get("resolve"), {
+                    user,
+                    autoSigninToken,
+                  });
                 }}
               />
             );
@@ -327,4 +314,162 @@ function $SignupRoute() {
       ) : null}
     </div>
   );
+}
+
+function createConfirmForeignCode(
+  signupMethodKey,
+  { codeWhere, codeWhereIdentifier, trimInput, stepPassToken }
+) {
+  return new ConfirmForeignCode({
+    codeWhere: codeWhere,
+    codeWhereIdentifier: codeWhereIdentifier,
+    trimInput: trimInput,
+    onSubmit: async (code) => {
+      const serverResult = await fetch(
+        `${serverReach}/signup/${signupMethodKey}/withConfirmForeignCodeStep`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            codeWhere: codeWhere,
+            codeWhereIdentifier: codeWhereIdentifier,
+            code,
+            stepPassToken: stepPassToken,
+          }),
+        }
+      );
+
+      if (serverResult.status == 200) {
+        const obj = await serverResult.json();
+
+        return new Signup.Success({
+          user: obj.user,
+          autoSigninToken: obj.autoSigninToken,
+        });
+      }
+
+      if (serverResult.status == 428) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CONFIRM-FOREIGN-CODE:`.length)
+          );
+
+          return createConfirmForeignCode(signupMethodKey, {
+            codeWhere: suffixedData.codeWhere,
+            codeWhereIdentifier: suffixedData.codeWhereIdentifier,
+            trimInput: suffixedData.trimInput,
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        if (text.startsWith(`CREATE-PASSWORD:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CREATE-PASSWORD:`.length)
+          );
+
+          return createCreatePassword(signupMethodKey, {
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        throw text;
+      }
+
+      if (serverResult.status == 400) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`REJECTED:`)) {
+          const suffixedData = JSON.parse(text.substring(`REJECTED:`.length));
+
+          throw new ConfirmForeignCode.RejectedError({
+            variant: suffixedData.variant,
+            customMessage: suffixedData.customMessage,
+          });
+        }
+
+        throw text;
+      }
+
+      throw await serverResult.text();
+    },
+  });
+}
+
+function createCreatePassword(signupMethodKey, { stepPassToken }) {
+  return new CreatePassword({
+    onSubmit: async (password) => {
+      const serverResult = await fetch(
+        `${serverReach}/signup/${signupMethodKey}/withCreatePasswordStep`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            password: password,
+            stepPassToken: stepPassToken,
+          }),
+        }
+      );
+
+      if (serverResult.status == 200) {
+        const obj = await serverResult.json();
+
+        return new Signup.Success({
+          user: obj.user,
+          autoSigninToken: obj.autoSigninToken,
+        });
+      }
+
+      if (serverResult.status == 428) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CONFIRM-FOREIGN-CODE:`.length)
+          );
+
+          return createConfirmForeignCode(signupMethodKey, {
+            codeWhere: suffixedData.codeWhere,
+            codeWhereIdentifier: suffixedData.codeWhereIdentifier,
+            trimInput: suffixedData.trimInput,
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        if (text.startsWith(`CREATE-PASSWORD:`)) {
+          const suffixedData = JSON.parse(
+            text.substring(`CREATE-PASSWORD:`.length)
+          );
+
+          return createCreatePassword(signupMethodKey, {
+            stepPassToken: suffixedData.stepPassToken,
+          });
+        }
+
+        throw text;
+      }
+
+      if (serverResult.status == 400) {
+        const text = await serverResult.text();
+
+        if (text.startsWith(`REJECTED:`)) {
+          const suffixedData = JSON.parse(text.substring(`REJECTED:`.length));
+
+          throw new CreatePassword.RejectedError({
+            variant: suffixedData.variant,
+            customMessage: suffixedData.customMessage,
+          });
+        }
+
+        throw text;
+      }
+
+      throw await serverResult.text();
+    },
+  });
 }
