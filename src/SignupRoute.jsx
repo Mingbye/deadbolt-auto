@@ -13,7 +13,8 @@ import { DialogsProvider, useDialogs } from "@toolpad/core";
 import LoadingDialog from "./LoadingDialog";
 import resolveResult from "./resolveResult";
 
-const serverReach = `http://localhost/app/deadbolt`;
+// const serverReach = `http://localhost/app/deadbolt`;
+const serverReach = `..`;
 
 export default function SignupRoute() {
   return (
@@ -48,57 +49,23 @@ function $SignupRoute() {
     );
   }
 
-  async function doAutoSignin(signupMethodKey, user, autoSigninToken) {
-    async function doPromptRetryAndRetry() {
-      const retry = await dialogs.confirm(`Auto sign-in failed. Try again?`);
 
-      if (retry) {
-        return await doAutoSignin(signupMethodKey, user, autoSigninToken);
-      }
+  async function doGotoSignin() {
+    const _searchParams = new URLSearchParams();
+    _searchParams.set("optSignup", "true");
 
-      return {
-        user: user,
-        signin: null,
-      };
+    if (searchParams.has("resolve")) {
+      _searchParams.set("resolve", searchParams.get("resolve"));
     }
 
-    let fetchResult = null;
-
-    try {
-      fetchResult = await LoadingDialog.useDialogs(
-        dialogs,
-        fetch(`${serverReach}/signup/${signupMethodKey}/autoSignin`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            user,
-            autoSigninToken,
-          }),
-        }),
-        { message: "Auto Signing-in" }
+    if (searchParams.has("resolveStringified")) {
+      _searchParams.set(
+        "resolveStringified",
+        searchParams.get("resolveStringified")
       );
-    } catch (e) {
-      return await doPromptRetryAndRetry();
     }
 
-    if (fetchResult.status != 200) {
-      return await doPromptRetryAndRetry();
-    }
-
-    let signin = null;
-
-    try {
-      signin = await LoadingDialog.useDialogs(dialogs, fetchResult.text());
-    } catch (e) {
-      return await doPromptRetryAndRetry();
-    }
-
-    return {
-      user: user,
-      signin: signin,
-    };
+    navigate(`/signin?${_searchParams.toString()}`);
   }
 
   useEffect(() => {
@@ -233,18 +200,8 @@ function $SignupRoute() {
                 }
                 provideOptSignin={
                   searchParams.get("signin") == "true"
-                    ? async () => {
-                        const _searchParams = new URLSearchParams();
-                        _searchParams.set("optSignup", "true");
-
-                        if (searchParams.has("resolve")) {
-                          _searchParams.set(
-                            "resolve",
-                            searchParams.get("resolve")
-                          );
-                        }
-
-                        navigate(`/signin?${_searchParams.toString()}`);
+                    ? () => {
+                        doGotoSignin();
                       }
                     : undefined
                 }
@@ -255,28 +212,21 @@ function $SignupRoute() {
 
                   if (signin == "true") {
                     if (autoSigninToken == undefined) {
-                      resolveResult(searchParams.get("resolve"), {
-                        user,
-                        signin: null,
-                      });
+                      await dialogs.alert(
+                        "Account created. Sign-in to continue"
+                      );
 
-                      // await dialogs.alert(
-                      //   "Account created. Sign-in to continue"
-                      // );
+                      doGotoSignin();
 
                       return;
                     }
 
                     const confirmDoAutoSignin = await dialogs.confirm(
-                      "Account created. Auto sign-in?"
+                      "Account created. Auto sign-in? Cancel to go sign-in manually"
                     );
 
                     if (!confirmDoAutoSignin) {
-                      resolveResult(searchParams.get("resolve"), {
-                        user,
-                        signin: null,
-                      });
-
+                      doGotoSignin();
                       return;
                     }
 
@@ -288,24 +238,71 @@ function $SignupRoute() {
                       }
                     }
 
-                    const doAutoSigninResult = await doAutoSignin(
-                      signupMethodKey,
-                      user,
-                      autoSigninToken
-                    );
+                    let signin = null;
 
-                    resolveResult(searchParams.get("resolve"), {
-                      user: doAutoSigninResult.user,
-                      signin: doAutoSigninResult.signin,
-                    });
+                    while (true) {
+                      try {
+                        const fetchResult = await LoadingDialog.useDialogs(
+                          dialogs,
+                          fetch(
+                            `${serverReach}/signup/${signupMethodKey}/autoSignin`,
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                user,
+                                autoSigninToken,
+                              }),
+                            }
+                          ),
+                          { message: "Auto Signing-in" }
+                        );
+
+                        if (fetchResult.status == 200) {
+                          signin = await LoadingDialog.useDialogs(
+                            dialogs,
+                            fetchResult.text()
+                          );
+
+                          break;
+                        }
+
+                      } catch (e) {
+                        const confirmRetryAutoSignin = await dialogs.confirm(
+                          "Auto sign-in failed. Retry? Cancel to go sign-in manually"
+                        );
+
+                        if (!confirmRetryAutoSignin) {
+                          doGotoSignin();
+                          return;
+                        }
+
+                        //continuing to retry auto sign-in...
+                      }
+                    }
+
+                    resolveResult(
+                      searchParams.get("resolve"),
+                      searchParams.get("resolveStringified") == "true",
+                      {
+                        user: user,
+                        signin: signin,
+                      }
+                    );
 
                     return;
                   }
 
-                  resolveResult(searchParams.get("resolve"), {
-                    user,
-                    autoSigninToken,
-                  });
+                  resolveResult(
+                    searchParams.get("resolve"),
+                    searchParams.get("resolveStringified") == "true",
+                    {
+                      user,
+                      autoSigninToken,
+                    }
+                  );
                 }}
               />
             );

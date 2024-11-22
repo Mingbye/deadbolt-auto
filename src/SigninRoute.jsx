@@ -10,7 +10,8 @@ import { CircularProgress, Typography } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import resolveResult from "./resolveResult";
 
-const serverReach = `http://localhost/app/deadbolt`;
+// const serverReach = `http://localhost/app/deadbolt`;
+const serverReach = `..`;
 
 export default function SigninRoute() {
   const navigate = useNavigate();
@@ -186,12 +187,19 @@ export default function SigninRoute() {
                           );
                         }
 
+                        if (searchParams.has("resolveStringified")) {
+                          _searchParams.set(
+                            "resolveStringified",
+                            searchParams.get("resolveStringified")
+                          );
+                        }
+
                         navigate(`/signup?${_searchParams.toString()}`);
                       }
                     : undefined
                 }
                 onResult={(result) => {
-                  resolveResult(searchParams.get("resolve"), result);
+                  resolveResult(searchParams.get("resolve"),searchParams.get("resolveStringified")=="true", result);
                 }}
               />
             );
@@ -232,7 +240,7 @@ function createConfirmForeignCode(
 
         return new Signin.Success({
           user: obj.user,
-          autoSigninToken: obj.autoSigninToken,
+          signin: obj.signin,
         });
       }
 
@@ -307,7 +315,7 @@ function createCreatePassword(signinMethodKey, { stepPassToken }) {
 
         return new Signin.Success({
           user: obj.user,
-          autoSigninToken: obj.autoSigninToken,
+          signin: obj.signin,
         });
       }
 
