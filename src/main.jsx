@@ -4,6 +4,10 @@ import SigninRoute from "./SigninRoute";
 
 import SignupRoute from "./SignupRoute";
 
+
+export const serverReach = `http://localhost/app/deadbolt`; 
+// export const serverReach = `..`;
+
 const router = createHashRouter([
   {
     path: "/",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PromiseBuilder from "./PromiseBuilder";
 import {
   ConfirmForeignCode,
@@ -8,13 +8,14 @@ import {
 } from "@mingbye/deadbolt-react";
 import { CircularProgress, Typography } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import resolveResult from "./resolveResult";
-
-// const serverReach = `http://localhost/app/deadbolt`;
-const serverReach = `..`;
+import ResultResolveDialog from "./ResultResolveDialog";
+import { serverReach } from "./main";
+import MuiDialogerProvider from "./MuiDialogerProvider";
 
 export default function SigninRoute() {
   const navigate = useNavigate();
+
+  const dialogerRef=useRef(undefined);
 
   const [gettingDeadboltAutoData, setGettingDeadboltAutoData] = useState(null);
 
@@ -41,172 +42,190 @@ export default function SigninRoute() {
   }, []);
 
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      {gettingDeadboltAutoData != null ? (
-        <PromiseBuilder
-          promise={gettingDeadboltAutoData}
-          builder={(snapshot) => {
-            if (snapshot == null) {
-              return <CircularProgress />;
-            }
+    <MuiDialogerProvider dialogerRef={dialogerRef}>
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {gettingDeadboltAutoData != null ? (
+          <PromiseBuilder
+            promise={gettingDeadboltAutoData}
+            builder={(snapshot) => {
+              if (snapshot == null) {
+                return <CircularProgress />;
+              }
 
-            if (snapshot[0] != true) {
-              //If not a network problem, This is mostly likely because the developer didnot setup the signin module
+              if (snapshot[0] != true) {
+                //If not a network problem, This is mostly likely because the developer didnot setup the signin module
+                return (
+                  <Typography align="center">
+                    Failed to setup sign-in
+                  </Typography>
+                );
+              }
+
+              const deadboltAutoData = snapshot[1];
+
+              const signinMethods = [];
+              for (const key of Object.keys(deadboltAutoData.methods)) {
+                const item = deadboltAutoData.methods[key];
+
+                let signinMethod = null;
+
+                if (item.type == "Id") {
+                  signinMethod = new Signin.Id({
+                    variant: item.data.variant,
+                    trimInput: item.data.trimInput,
+                    usePassword: item.data.withPassword,
+                    onSubmitId: async (id, password) => {
+                      const serverResult = await fetch(
+                        `${serverReach}/signin/${key}`,
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            id,
+                            password,
+                          }),
+                        }
+                      );
+
+                      if (serverResult.status == 200) {
+                        const obj = await serverResult.json();
+
+                        return new Signin.Success({
+                          user: obj.user,
+                          signin: obj.signin,
+                        });
+                      }
+
+                      if (serverResult.status == 428) {
+                        const text = await serverResult.text();
+
+                        // if (text.startsWith(`SOLVE-ANTI-ROBOT-CHALLENGE:`)) {
+                        //   const suffixedData = JSON.parse(
+                        //     text.substring(`SOLVE-ANTI-ROBOT-CHALLENGE:`.length)
+                        //   );
+
+                        //   return createSolveAntiRobotChallenge(); ...
+
+                        // }
+
+                        if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
+                          const suffixedData = JSON.parse(
+                            text.substring(`CONFIRM-FOREIGN-CODE:`.length)
+                          );
+
+                          return createConfirmForeignCode(key, {
+                            codeWhere: suffixedData.codeWhere,
+                            codeWhereIdentifier:
+                              suffixedData.codeWhereIdentifier,
+                            trimInput: suffixedData.trimInput,
+                            stepPassToken: suffixedData.stepPassToken,
+                          });
+                        }
+
+                        if (text.startsWith(`CREATE-PASSWORD:`)) {
+                          const suffixedData = JSON.parse(
+                            text.substring(`CREATE-PASSWORD:`.length)
+                          );
+
+                          return createCreatePassword(key, {
+                            stepPassToken: suffixedData.stepPassToken,
+                          });
+                        }
+
+                        throw text;
+                      }
+
+                      if (serverResult.status == 400) {
+                        const text = await serverResult.text();
+
+                        if (text.startsWith(`REJECTED:`)) {
+                          const suffixedData = JSON.parse(
+                            text.substring(`REJECTED:`.length)
+                          );
+
+                          throw new Signin.Id.RejectedError({
+                            variant: suffixedData.variant,
+                            customMessage: suffixedData.customMessage,
+                          });
+                        }
+
+                        throw text;
+                      }
+
+                      throw await serverResult.text();
+                    },
+                  });
+                }
+
+                if (signinMethod != null) {
+                  signinMethods.push(signinMethod);
+                }
+              }
+
               return (
-                <Typography align="center">Failed to setup sign-in</Typography>
-              );
-            }
+                <Signin
+                  signinMethod={
+                    signinMethods.length == 1 ? signinMethods[0] : signinMethods
+                  }
+                  provideOptSignup={
+                    searchParams.get("optSignup") == "true"
+                      ? async () => {
+                          const _searchParams = new URLSearchParams();
 
-            const deadboltAutoData = snapshot[1];
+                          _searchParams.set("signin", "true");
 
-            const signinMethods = [];
-            for (const key of Object.keys(deadboltAutoData.methods)) {
-              const item = deadboltAutoData.methods[key];
+                          if (searchParams.has("resolve")) {
+                            _searchParams.set(
+                              "resolve",
+                              searchParams.get("resolve")
+                            );
+                          }
 
-              let signinMethod = null;
+                          if (searchParams.has("resolveStringified")) {
+                            _searchParams.set(
+                              "resolveStringified",
+                              searchParams.get("resolveStringified")
+                            );
+                          }
 
-              if (item.type == "Id") {
-                signinMethod = new Signin.Id({
-                  variant: item.data.variant,
-                  trimInput: item.data.trimInput,
-                  usePassword: item.data.withPassword,
-                  onSubmitId: async (id, password) => {
-                    const serverResult = await fetch(
-                      `${serverReach}/signin/${key}`,
+                          navigate(`/signup?${_searchParams.toString()}`);
+                        }
+                      : undefined
+                  }
+                  onResult={(result) => {
+                    const _searchParams = new URLSearchParams(searchParams);
+
+                    dialogerRef.current.open(
+                      ResultResolveDialog,
                       {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
+                        result: result,
+                        data:{
+                          searchParamsGet:_searchParams.get,
                         },
-                        body: JSON.stringify({
-                          id,
-                          password,
-                        }),
+                      },
+                      {
+                        fullScreen: true,
                       }
                     );
-
-                    if (serverResult.status == 200) {
-                      const obj = await serverResult.json();
-
-                      return new Signin.Success({
-                        user: obj.user,
-                        signin: obj.signin,
-                      });
-                    }
-
-                    if (serverResult.status == 428) {
-                      const text = await serverResult.text();
-
-                      // if (text.startsWith(`SOLVE-ANTI-ROBOT-CHALLENGE:`)) {
-                      //   const suffixedData = JSON.parse(
-                      //     text.substring(`SOLVE-ANTI-ROBOT-CHALLENGE:`.length)
-                      //   );
-
-                      //   return createSolveAntiRobotChallenge(); ...
-
-                      // }
-
-                      if (text.startsWith(`CONFIRM-FOREIGN-CODE:`)) {
-                        const suffixedData = JSON.parse(
-                          text.substring(`CONFIRM-FOREIGN-CODE:`.length)
-                        );
-
-                        return createConfirmForeignCode(key, {
-                          codeWhere: suffixedData.codeWhere,
-                          codeWhereIdentifier: suffixedData.codeWhereIdentifier,
-                          trimInput: suffixedData.trimInput,
-                          stepPassToken: suffixedData.stepPassToken,
-                        });
-                      }
-
-                      if (text.startsWith(`CREATE-PASSWORD:`)) {
-                        const suffixedData = JSON.parse(
-                          text.substring(`CREATE-PASSWORD:`.length)
-                        );
-
-                        return createCreatePassword(key, {
-                          stepPassToken: suffixedData.stepPassToken,
-                        });
-                      }
-
-                      throw text;
-                    }
-
-                    if (serverResult.status == 400) {
-                      const text = await serverResult.text();
-
-                      if (text.startsWith(`REJECTED:`)) {
-                        const suffixedData = JSON.parse(
-                          text.substring(`REJECTED:`.length)
-                        );
-
-                        throw new Signin.Id.RejectedError({
-                          variant: suffixedData.variant,
-                          customMessage: suffixedData.customMessage,
-                        });
-                      }
-
-                      throw text;
-                    }
-
-                    throw await serverResult.text();
-                  },
-                });
-              }
-
-              if (signinMethod != null) {
-                signinMethods.push(signinMethod);
-              }
-            }
-
-            return (
-              <Signin
-                signinMethod={
-                  signinMethods.length == 1 ? signinMethods[0] : signinMethods
-                }
-                provideOptSignup={
-                  searchParams.get("optSignup") == "true"
-                    ? async () => {
-                        const _searchParams = new URLSearchParams();
-
-                        _searchParams.set("signin", "true");
-
-                        if (searchParams.has("resolve")) {
-                          _searchParams.set(
-                            "resolve",
-                            searchParams.get("resolve")
-                          );
-                        }
-
-                        if (searchParams.has("resolveStringified")) {
-                          _searchParams.set(
-                            "resolveStringified",
-                            searchParams.get("resolveStringified")
-                          );
-                        }
-
-                        navigate(`/signup?${_searchParams.toString()}`);
-                      }
-                    : undefined
-                }
-                onResult={(result) => {
-                  resolveResult(searchParams.get("resolve"),searchParams.get("resolveStringified")=="true", result);
-                }}
-              />
-            );
-          }}
-        />
-      ) : null}
-    </div>
+                  }}
+                />
+              );
+            }}
+          />
+        ) : null}
+      </div>
+    </MuiDialogerProvider>
   );
 }
 
