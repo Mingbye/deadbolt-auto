@@ -1,5 +1,6 @@
 import { Typography } from "@mui/material";
 import { useEffect, useRef } from "react";
+import { serverReach } from "./main";
 
 export default function ResolveResultDialog({ payload, onClose }) {
   const mountedRef = useRef(false);
@@ -13,15 +14,14 @@ export default function ResolveResultDialog({ payload, onClose }) {
   }, []);
 
   async function doResolveCycle() {
-    const resolve = payload.data.searchParamsGet("resolve");
-    const resolveStringified =
-      payload.data.searchParamsGet("resolveStringified");
+    const resolve = payload.data.searchParamsData.resolve;
+    const resolveStringified = payload.data.searchParamsData.resolveStringified;
 
     const resolvable = resolveStringified
       ? JSON.stringify({
           data: result,
         })
-      : result;
+      : payload.result;
 
     if (resolve == "opener") {
       window.opener.postMessage(resolvable);
@@ -39,7 +39,7 @@ export default function ResolveResultDialog({ payload, onClose }) {
     }
 
     if (resolve == "remote") {
-      const key = payload.data.searchParamsGet("resolveRemoteKey");
+      const key = payload.data.searchParamsData.remoteResolveKey;
 
       try {
         await fetch(`${serverReach}/remoteResolve`, {
@@ -53,6 +53,7 @@ export default function ResolveResultDialog({ payload, onClose }) {
           }),
         });
       } catch (e) {
+        console.error(e);
         setTimeout(() => {
           if (mountedRef.current == true) {
             doResolveCycle();

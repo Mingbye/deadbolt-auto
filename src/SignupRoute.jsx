@@ -294,7 +294,9 @@ function $SignupRoute() {
                             signin: signin,
                           },
                           data: {
-                            searchParamsGet: searchParams.get,
+                            searchParamsData: Object.fromEntries(
+                              searchParams.entries()
+                            ),
                           },
                         },
                         {
@@ -313,7 +315,9 @@ function $SignupRoute() {
                           autoSigninToken,
                         },
                         data: {
-                          searchParamsGet: searchParams.get,
+                          searchParamsData: Object.fromEntries(
+                            searchParams.entries()
+                          ),
                         },
                       },
                       {

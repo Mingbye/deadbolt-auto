@@ -15,7 +15,7 @@ import MuiDialogerProvider from "./MuiDialogerProvider";
 export default function SigninRoute() {
   const navigate = useNavigate();
 
-  const dialogerRef=useRef(undefined);
+  const dialogerRef = useRef(undefined);
 
   const [gettingDeadboltAutoData, setGettingDeadboltAutoData] = useState(null);
 
@@ -210,8 +210,10 @@ export default function SigninRoute() {
                       ResultResolveDialog,
                       {
                         result: result,
-                        data:{
-                          searchParamsGet:_searchParams.get,
+                        data: {
+                          searchParamsData: Object.fromEntries(
+                            searchParams.entries()
+                          ),
                         },
                       },
                       {

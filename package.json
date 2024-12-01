@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mingbye/deadbolt-react": "1.0.0",
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
+    "@mingbye/deadbolt-react": "^1.0.1",
     "@mui/material": "^6.1.5",
     "@toolpad/core": "^0.8.1",
     "react": "^18.3.1",
