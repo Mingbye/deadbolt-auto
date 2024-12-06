@@ -199,6 +199,13 @@ export default function SigninRoute() {
                             );
                           }
 
+                          if (searchParams.has("remoteResolveKey")) {
+                            _searchParams.set(
+                              "remoteResolveKey",
+                              searchParams.get("remoteResolveKey")
+                            );
+                          }
+
                           navigate(`/signup?${_searchParams.toString()}`);
                         }
                       : undefined

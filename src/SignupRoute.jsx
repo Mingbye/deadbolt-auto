@@ -65,6 +65,13 @@ function $SignupRoute() {
       );
     }
 
+    if (searchParams.has("remoteResolveKey")) {
+      _searchParams.set(
+        "remoteResolveKey",
+        searchParams.get("remoteResolveKey")
+      );
+    }
+
     navigate(`/signin?${_searchParams.toString()}`);
   }
 
