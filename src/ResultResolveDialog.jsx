@@ -24,17 +24,17 @@ export default function ResolveResultDialog({ payload, onClose }) {
       : payload.result;
 
     if (resolve == "opener") {
-      window.opener.postMessage(resolvable);
+      window.opener.postMessage(resolvable,"*");
       return;
     }
 
     if (resolve == "parent") {
-      window.parent.postMessage(resolvable);
+      window.parent.postMessage(resolvable,"*");
       return;
     }
 
     if (resolve == "channel") {
-      window.ResolveChannel.postMessage(resolvable);
+      window.ResolveChannel.postMessage(resolvable,"*");
       return;
     }
 
