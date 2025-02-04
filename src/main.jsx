@@ -1,28 +1,21 @@
 import { createRoot } from "react-dom/client";
-import { RouterProvider, createHashRouter } from "react-router-dom";
+import { HashRouter, Route, Routes } from "react-router-dom";
+import RunRoute from "./RunRoute";
 import SigninRoute from "./SigninRoute";
-
 import SignupRoute from "./SignupRoute";
 
+export const serverReach = `http://localhost/deadbolt/app`;
+// export const serverReach = `..`;
 
-// export const serverReach = `http://localhost/app/deadbolt`;
-export const serverReach = `..`;
-
-const router = createHashRouter([
-  {
-    path: "/",
-    element: "DEADBOLT-AUTO",
-  },
-  {
-    path: "signin",
-    element: <SigninRoute />,
-  },
-  {
-    path: "signup",
-    element: <SignupRoute />,
-  },
-]);
+// console.clear();
 
 createRoot(document.getElementById("root")).render(
-  <RouterProvider router={router} />
+  <HashRouter>
+    <Routes>
+      <Route path="/" element="Deadbolt-auto" />
+      <Route path="/run" element={<RunRoute />} />
+      <Route path="/signup" element={<SignupRoute />} />
+      <Route path="/signin" element={<SigninRoute />} />
+    </Routes>
+  </HashRouter>
 );
